@@ -36,8 +36,8 @@
       <div class="task-group" v-for="(group, gidx) in groupedTasks" :key="gidx">
         <div class="group-title">{{ group.title }}</div>
         <ul>
-          <li v-for="task in group.tasks" :key="task.id" :class="{selected: selectedTask && selectedTask.id===task.id}" @click="selectTask(task)">
-            <el-checkbox v-model="task.completed" @change="toggleComplete(task)" />
+          <li v-for="task in sortTasks(group.tasks)" :key="task.id" :class="{selected: selectedTask && selectedTask.id===task.id, completed: task.completed}" @click="selectTask(task)">
+            <el-checkbox v-model="task.completed" @change.stop="toggleComplete(task)" />
             <span class="task-title">{{ task.title }}</span>
             <span class="task-time" v-if="task.start_time">{{ formatTime(task.start_time) }}</span>
             <el-button type="text" icon="el-icon-delete" @click.stop="deleteSchedule(task.id)" />
@@ -60,23 +60,34 @@
         <i class="el-icon-notebook-2"></i>
         <p>请选择一个任务查看详情</p>
       </div>
-      <div class="ai-helper">
-        <el-input
-          v-model="aiPrompt"
-          placeholder="如：帮我安排明天下午三点开会"
-          clearable
-          @keyup.enter="getAISuggestion"
-        />
-        <el-button type="success" @click="getAISuggestion" round>AI建议</el-button>
-        <el-alert
-          v-if="aiSuggestion"
-          :title="aiSuggestion"
-          type="info"
-          show-icon
-          class="ai-alert"
-        />
+      <div class="ai-assistant-area">
+        <div class="ai-simple-list">
+          <div v-for="(item, idx) in aiHistory" :key="idx" class="ai-simple-item">
+            <div v-if="item.role === 'user'">用户：{{ item.content }}</div>
+            <div v-else>AI：{{ item.content }}</div>
+          </div>
+        </div>
+        <div class="ai-helper">
+          <div class="ai-header">
+            <h4>🤖 AI 智能助手</h4>
+            <el-switch
+              v-model="useOnlineAI"
+              active-text="在线AI"
+              inactive-text="本地AI"
+              size="small"
+            />
+          </div>
+          <el-input
+            v-model="aiPrompt"
+            placeholder="如：帮我安排明天下午三点开会"
+            clearable
+            @keyup.enter="getAISuggestion"
+          />
+          <el-button type="success" @click="getAISuggestion" :loading="aiLoading" round>
+            {{ aiLoading ? '思考中...' : 'AI建议' }}
+          </el-button>
+        </div>
       </div>
-
     </section>
 
     <!-- 添加任务弹窗 -->
@@ -142,8 +153,11 @@ const form = ref({
 })
 const aiPrompt = ref('')
 const aiSuggestion = ref('')
+const useOnlineAI = ref(false)
+const aiLoading = ref(false)
 const selectedTask = ref(null)
 const activeMenu = ref('inbox')
+const aiHistory = ref([])
 
 
 // 加载所有任务
@@ -256,9 +270,17 @@ const selectTask = (task) => {
   selectedTask.value = task
 }
 
-const toggleComplete = (task) => {
-  // 可扩展为后端同步
+const toggleComplete = async (task) => {
+  // 切换本地状态
   task.completed = !task.completed
+  // 同步到后端
+  try {
+    await axios.patch(`http://localhost:8000/schedules/${task.id}/completed/`, { completed: task.completed })
+  } catch {
+    ElMessage.error('更新任务完成状态失败')
+    // 回滚本地状态
+    task.completed = !task.completed
+  }
 }
 
 const getAISuggestion = async () => {
@@ -266,11 +288,22 @@ const getAISuggestion = async () => {
     ElMessage.warning('请输入需求')
     return
   }
+  aiLoading.value = true
   try {
-    const res = await axios.post('http://localhost:8000/ai/schedule_suggestion/', { prompt: aiPrompt.value })
-    aiSuggestion.value = res.data.message
-  } catch {
-    aiSuggestion.value = 'AI建议获取失败'
+    // 先记录用户输入
+    aiHistory.value.push({ role: 'user', content: aiPrompt.value })
+    const res = await axios.post('http://localhost:8000/ai/schedule_suggestion/', {
+      message: aiPrompt.value,
+      use_online: useOnlineAI.value
+    })
+    aiHistory.value.push({ role: 'ai', content: res.data.response.replace(/<think>|<\/think>/g, '').trim() })
+    ElMessage.success(`AI建议 (${res.data.source})`)
+    aiPrompt.value = ''
+  } catch (error) {
+    aiHistory.value.push({ role: 'ai', content: 'AI建议获取失败，请检查网络连接或API配置' })
+    ElMessage.error('AI建议获取失败')
+  } finally {
+    aiLoading.value = false
   }
 }
 
@@ -290,6 +323,11 @@ function formatDate(dt) {
   if (!dt) return ''
   const d = new Date(dt)
   return d.toLocaleString()
+}
+
+function sortTasks(tasks) {
+  // 未完成的在前，已完成的在后
+  return [...tasks].sort((a, b) => Number(a.completed) - Number(b.completed));
 }
 
 </script>
@@ -454,6 +492,26 @@ function formatDate(dt) {
   font-size: 2.5rem;
   margin-bottom: 10px;
 }
+.ai-assistant-area {
+  margin-top: auto;
+  /* 保证AI助手区域始终在底部 */
+  display: flex;
+  flex-direction: column;
+}
+.ai-simple-list {
+  margin-top: 24px;
+  margin-bottom: 12px;
+  max-height: 220px; /* 可根据需要调整高度 */
+  overflow-y: auto;
+  background: #fafbfc;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+.ai-simple-item {
+  padding: 4px 0;
+  color: #333;
+  font-size: 1rem;
+}
 .ai-helper {
   margin-top: auto;
   background: #fff;
@@ -462,11 +520,22 @@ function formatDate(dt) {
   padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.ai-alert {
-  margin-top: 6px;
+
+.ai-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
+
+.ai-header h4 {
+  margin: 0;
+  color: #409eff;
+  font-size: 1.1rem;
+}
+
 @media (max-width: 900px) {
   .schedule-app {
     flex-direction: column;
@@ -500,5 +569,10 @@ function formatDate(dt) {
     min-width: 0;
     padding: 18px 8px;
   }
+}
+
+.completed .task-title {
+  text-decoration: line-through;
+  color: #b0b0b0;
 }
 </style>

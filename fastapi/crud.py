@@ -33,3 +33,11 @@ def delete_schedule(db: Session, schedule_id: int):
         db.delete(db_schedule)
         db.commit()
     return db_schedule
+
+def update_schedule_completed(db: Session, schedule_id: int, completed: bool):
+    db_schedule = get_schedule(db, schedule_id)
+    if db_schedule:
+        db_schedule.completed = completed
+        db.commit()
+        db.refresh(db_schedule)
+    return db_schedule

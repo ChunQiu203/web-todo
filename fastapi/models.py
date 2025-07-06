@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -20,3 +20,4 @@ class Schedule(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="schedules")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    completed = Column(Boolean, default=False)

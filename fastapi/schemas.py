@@ -7,6 +7,7 @@ class ScheduleBase(BaseModel):
     description: Optional[str] = None
     start_time: datetime.datetime
     end_time: datetime.datetime
+    completed: Optional[bool] = False
 
 class ScheduleCreate(ScheduleBase):
     pass
