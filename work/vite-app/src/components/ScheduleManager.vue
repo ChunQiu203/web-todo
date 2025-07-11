@@ -64,18 +64,25 @@
         <div class="ai-simple-list">
           <div v-for="(item, idx) in aiHistory" :key="idx" class="ai-simple-item">
             <div v-if="item.role === 'user'">用户：{{ item.content }}</div>
-            <div v-else>AI：{{ item.content }}</div>
+            <div v-else>{{ ROLE_NAME_MAP[selectedRole] || 'AI' }}：{{ item.content }}</div>
           </div>
         </div>
         <div class="ai-helper">
-          <div class="ai-header">
+          <div class="ai-header" style="display:flex; align-items:center; justify-content:space-between;">
             <h4>🤖 AI 智能助手</h4>
-            <el-select v-model="useOnlineAI" size="small" style="width:120px;">
-              <el-option label="qwen-plus" value="qwen-plus" />
-              <el-option label="qwen-turbo" value="qwen-turbo" />
-              <el-option label="zhipu" value="zhipu" />
-              <el-option label="ollama" value="ollama" />
-            </el-select>
+            <div class="ai-select-group">
+              <el-select v-model="useOnlineAI" size="small" style="width:120px;">
+                <el-option label="qwen-plus" value="qwen-plus" />
+                <el-option label="qwen-turbo" value="qwen-turbo" />
+                <el-option label="zhipu" value="zhipu" />
+                <el-option label="ollama" value="ollama" />
+              </el-select>
+              <el-select v-model="selectedRole" size="small" style="width:120px; margin-left:8px;">
+                <el-option label="见行者" value="enforcer" />
+                <el-option label="水月" value="mizuki" />
+                <el-option label="逻各斯" value="logos" />
+              </el-select>
+            </div>
           </div>
           <el-input
             v-model="aiPrompt"
@@ -137,7 +144,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 // 已移除 ChatInterface 相关import
@@ -160,6 +167,7 @@ const aiLoading = ref(false) // 添加缺失的aiLoading变量
 const selectedTask = ref(null)
 const activeMenu = ref('inbox')
 const aiHistory = ref([])
+const selectedRole = ref('schedule_assistant')
 
 
 // 加载所有任务
@@ -183,6 +191,7 @@ onMounted(async () => {
   await fetchAllTasks()
   await fetchTodayTasks()
   await fetchWeekTasks()
+  await loadAIHistory() // 页面加载时也加载历史
 })
 
 // 根据菜单切换显示不同任务
@@ -285,6 +294,32 @@ const toggleComplete = async (task) => {
   }
 }
 
+// 1. 新增角色名映射
+const ROLE_NAME_MAP = {
+  'enforcer': 'enforcer',
+  'mizuki': 'mizuki',
+  'logos': 'logos'
+}
+
+// 2. 获取历史记录时带上角色参数
+async function loadAIHistory() {
+  try {
+    const response = await fetch(`http://localhost:8000/ai/history/${userId}?role=${selectedRole.value}`);
+    const history = await response.json();
+    aiHistory.value = history.map(h => ({
+      content: h.content,
+      role: h.role,
+      time: h.created_at ? new Date(h.created_at).toLocaleTimeString() : ''
+    }));
+  } catch (e) {
+    aiHistory.value = [];
+  }
+}
+
+// 3. 监听角色切换时自动加载对应历史
+watch(selectedRole, loadAIHistory)
+
+// 4. 发送消息时，history参数只包含当前角色的历史
 const getAISuggestion = async () => {
   console.log('getAISuggestion 被调用', { aiPrompt: aiPrompt.value, useOnlineAI: useOnlineAI.value });
   if (!aiPrompt.value) {
@@ -295,13 +330,13 @@ const getAISuggestion = async () => {
   try {
     aiHistory.value.push({ role: 'user', content: aiPrompt.value })
     console.log('发送请求到后端...');
-    const response = await fetch('http://localhost:8000/ai/schedule_suggestion/', {
+    const response = await fetch(`http://localhost:8000/ai/chat/?model=${useOnlineAI.value}&role=${selectedRole.value}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: aiPrompt.value,
         user_id: userId,
-        use_online: useOnlineAI.value
+        history: aiHistory.value.map(m => ({ role: m.role, content: m.content }))
       })
     });
     
@@ -556,6 +591,12 @@ function sortTasks(tasks) {
   margin: 0;
   color: #409eff;
   font-size: 1.1rem;
+}
+
+.ai-select-group {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 /* 已移除 .chat-float 和 .ai-chat-section 样式 */

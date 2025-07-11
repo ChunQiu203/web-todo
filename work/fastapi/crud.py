@@ -50,5 +50,8 @@ def create_ai_chat_history(db: Session, chat: schemas.AIChatHistoryCreate):
     db.refresh(db_chat)
     return db_chat
 
-def get_ai_chat_history_by_user(db: Session, user_id: int, limit: int = 20):
-    return db.query(models.AIChatHistory).filter(models.AIChatHistory.user_id == user_id).order_by(models.AIChatHistory.created_at.desc()).limit(limit).all()
+def get_ai_chat_history_by_user(db: Session, user_id: int, agent_role: str = None, limit: int = 20):
+    query = db.query(models.AIChatHistory).filter(models.AIChatHistory.user_id == user_id)
+    if agent_role:
+        query = query.filter(models.AIChatHistory.agent_role == agent_role)
+    return query.order_by(models.AIChatHistory.created_at.desc()).limit(limit).all()

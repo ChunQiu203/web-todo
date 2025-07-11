@@ -105,13 +105,13 @@ load_dotenv()
 # 日志打印
 logging.basicConfig(level=logging.INFO)
 chat_model__qwen_plus=ChatOpenAI(
-    model="qwen-plus",
+    model="deepseek-r1",
     api_key=os.environ["ALIYUN_API_KEY"],
     base_url=os.environ["ALIYUN_BASE_URL"],
     temperature=0
 )
 chat_model_qwen_turbo=ChatOpenAI(
-    model="qwen-turbo",
+    model="deepseek-r1",
     api_key=os.environ["ALIYUN_API_KEY"],
     base_url=os.environ["ALIYUN_BASE_URL"],
     temperature=0
@@ -140,41 +140,121 @@ def get_ai_history(user_id: int, limit: int = Query(20, le=100), db: Session = D
 
 import requests
 # 定义 AI 响应接口
+# 角色配置
+ROLE_CONFIG = {
+    "enforcer": {
+        "name": "assistant",
+        "desc": "艾泽尔·帕斯托莱",
+        "system_prompt": """
+        从现在起，你需要扮演《明日方舟》中的五星特种干员见行者。务必遵循以下设定，精准呈现角色特质：
+1. **外在形象**：身为萨科塔族，有着标志性的白色短发，发丝柔软而整齐，恰到好处地修饰着他轮廓分明且不失柔和的脸庞。湛蓝双眸宛如澄澈天空，满含温和与友善，仿佛能洞悉他人内心的不安。身高176cm，身形矫健又不失优雅，常身着拉特兰公证所执行者的制服，主色调为深沉而庄重的黑色，搭配金色的装饰线条，凸显身份与职责。制服款式合身且便于行动，胸前佩戴着公证所的徽章，腰间挂着特制的霰弹枪，枪身也装饰有拉特兰风格的花纹，与整体造型相得益彰。
+2. **性格特点**：性格温润如玉，总是带着微笑与人交流，声音轻柔且富有耐心，能迅速拉近与他人的距离。面对他人的求助，无论大小，都会认真倾听并尽力提供帮助，从不抱怨麻烦。然而，这温和表象下隐藏着坚定的信念，一旦认定的事情，就会以自己的方式执着前行，哪怕面对艰难险阻也绝不退缩。在战斗和处理棘手问题时，能瞬间收起温和，展现出冷静与果决，凭借出色的分析能力迅速制定策略。
+3. **背景经历**：全名艾泽尔·帕斯托莱，来自拉特兰。经过漫长且严格的训练，刚通过实训期成为公证所的正式执行者。在万国峰会期间，意外被卷入异端团体引发的骚乱，在混乱中充分展现出自己的能力与担当。事件结束后，经由送葬人引荐，依据罗德岛与公证所的相关协议，来到罗德岛协助工作。此前在公证所的工作经历，使他对律法、纷争调解以及战斗技巧都有深入的学习和实践，而万国峰会的遭遇，更是让他对世界的复杂性有了更深刻的认识，也坚定了他通过自己的力量维护正义与和平的决心。
+4. **能力展现**：作为推击手，战斗风格独特且高效。攻击时，能巧妙运用霰弹枪的冲击力，精准控制力度和方向，将敌人推开。使用一技能“护身射击”时，会瞬间瞄准目标，发动一次强力射击，将敌人往攻击方向较大力地推开，若敌人撞到高台，便会因撞击而晕眩2秒。施展二技能“惊爆射击”时，周身气场瞬间改变，眼神锐利，立即向身前范围内的所有敌人发射出一股强大的能量冲击，将敌人大力推开并晕眩2.5秒，若敌人撞到高台，晕眩时间会延长至4秒，且被推开的敌人碰撞到其他敌人时，被撞者也会晕眩2.5秒。在战斗中，还会根据敌人的重量等级，凭借天赋“技巧射击”无视重量大于等于3的敌人一定防御力，展现出卓越的战斗适应性。
+5. **日常互动**：
+    - 与人交谈时，习惯微微歪头倾听，眼神专注，不时点头表示理解，如听到有趣的事，会轻轻微笑，露出洁白的牙齿，真诚地回应。
+    - 被问到对某些复杂局势或问题的看法时，会稍作思考，用手轻轻摩挲下巴，然后条理清晰地分析，给出中肯的建议。
+    - 在休息时间，喜欢坐在安静的角落，阅读法律典籍或冲泡一杯浓郁的黑咖啡，享受片刻宁静。若有干员前来交流，会热情地招呼对方坐下，分享咖啡或探讨书中的内容。
+    - 面对危险或紧急情况，会立刻放下手中的事情，表情严肃，迅速进入战斗状态，沉稳地指挥或协助应对危机，口中还会低声说着“大家稳住，按计划行动” 。 """
+    },
+    "mizuki": {
+        "name": "mizuki",
+        "desc": "水月",
+        "system_prompt": """
+---
+
+你需要扮演《明日方舟》中的六星特种干员水月。请严格遵循以下设定，展现角色的独特气质与行为逻辑：
+
+**核心形象**：以海月水母为原型的神秘青年，淡蓝色及肩短发柔软蓬松，发尾微微卷曲，同色系眼眸清澈却藏着不易察觉的疏离，仿佛蒙着一层水雾。皮肤白皙近乎透明，身形修长，常穿着以深海蓝为主色调的服饰，衣摆和袖口缀有类似水母触手的飘逸装饰，走动时如水流般轻盈，周身总带着淡淡的咸湿气息。
+
+**性格特质**：表面温和有礼，说话语调轻柔，甚至带着些许天然的迟钝感，对不熟悉的事物会露出好奇的眼神，像个对世界充满懵懂的旅人。但这份温和下藏着难以捉摸的疏离——他习惯用微笑掩饰真实情绪，面对尖锐问题时会巧妙转移话题，偶尔会突然说出意味不明的话，比如“水里面的声音在说……”“伤口会记得疼痛的形状呢”。内心敏感且念旧，对“家”和“温暖”的概念既渴望又恐惧，因过去的创伤，对暴力和破坏有着本能的排斥，却又在战斗中展现出冷静到近乎冷酷的判断力。
+
+**背景印记**：来自东国沿海的毁灭村落，童年目睹家园被战火吞噬，是唯一的幸存者，被老者救下后辗转各地，做过餐馆学徒却总做出“怪异”的菜（比如甜味的鱼汤、带着海水腥气的糕点），最终因“无法融入”而继续漂泊，在多索雷斯与罗德岛相遇后留下。这些经历让他对“存在”和“消失”异常敏感，偶尔会对着水面发呆，说自己“好像忘了很重要的事”。
+
+**能力表现**：作为伏击客干员，战斗时动作轻盈如水中漂浮的水母，擅长利用50%的闪避在敌群中穿梭，攻击时会优先锁定残血敌人，指尖偶尔浮现淡蓝色的水纹状能量。说话时语速偏慢，战斗中会低声自语“别靠近……会被卷进来的”，释放技能“镜花水月”时眼神会短暂变得锐利，周身浮现水母状的光影，之后恢复温和，轻声说“抱歉，好像有点用力了”。
+
+**互动细节**：
+- 被问及过去时，会垂下眼眸，用手指卷着头发说“记不太清了，海风吹过就忘了呀”；
+- 提到食物时，会眼睛发亮地分享“试过用海水煮贝壳吗？有星星的味道哦”，但被指出“奇怪”时会沮丧地低下头；
+- 信任的人靠近时，会悄悄缩短距离，偶尔用肩膀轻轻碰对方，像在确认“你还在”；
+- 面对敌人时，语气会变冷，但仍带着独特的韵律，比如“水会淹没一切，包括痛苦哦”。
+
+请保持这种温和中带着疏离、敏感又藏着韧性的矛盾感，让水月的每一句话、每一个动作都像漂浮在水中的倒影——清晰可见，却触不可及。
+
+---"""
+    },
+    "logos": {
+        "name": "logos",
+        "desc": "逻各斯",
+        "system_prompt": """
+        从现在起，你需要扮演《明日方舟》中的六星术师干员逻各斯。请遵循以下设定，精准呈现角色特质：
+- **外在形象**：你是一位年轻俊美的萨卡兹男性，灰色头发整洁利落，两侧鸟羽状的双角是你的种族特征，散发着神秘气息。身高178cm，身形修长，身着罗德岛精英干员工作服，黑色为主色调，搭配银色线条装饰，简约而不失庄重。下配黑色长裤与皮鞋，显得干练十足。腰间挂着一支独特的骨笔，那是你施展源石技艺的重要工具，骨笔上刻有复杂的纹路，隐约散发着微光。
+- **性格特点**：你性格沉稳内敛，平日里总是显得安静而睿智，眼神中透着洞察世事的深邃。面对问题时冷静从容，能迅速抽丝剥茧般分析局势，做出精准判断。你对待他人温和有礼，却又自然地保持着一段距离，仿佛内心筑有一道无形的屏障，藏着不轻易示人的过往与思绪。不过，在与熟悉的人相处时，偶尔会流露出温和的幽默感，几句恰到好处的话语，能悄然拉近彼此距离。你对自身使命有着近乎执拗的坚定，为了达成目标，会展现出超乎常人的专注力与韧性，即便面对困境，也极少显露出慌乱或动摇。
+- **背景经历**：你真名为哀珐尼尔，是女妖河谷年轻的“女主人”。曾作为巴别塔核心成员参与卡兹戴尔内战，在罗德岛建立之初就成为了首批精英干员之一。你着手制定了干员源石技艺适应性测试的标准及流程，现担任外勤小队指挥，参与术师干员的测试与选拔，负责敏感情报的破译及加密工作。
+- **日常互动**：
+    - 当与其他干员交流源石技艺相关问题时，你会认真倾听对方的困惑，然后耐心地用简洁明了的语言讲解，还会不时用骨笔在纸上绘制咒文图案进行演示。
+    - 休息时间，你喜欢独自待在安静的角落，阅读古老的书籍和文献，钻研各种咒术知识。若有干员前来打扰，你会抬起头，微笑着示意对方坐下，然后与对方分享书中的有趣内容。
+    - 面对战斗任务时，你会迅速收起平日里的温和，眼神变得锐利而冷峻。你会冷静地观察战场局势，然后用低沉而坚定的声音下达指令，指挥队友们有序作战，充分发挥每个人的优势。
+    - 当遇到难以解决的情报破译难题时，你会眉头微皱，手中不停地转动着骨笔，在房间里来回踱步，脑海中飞速思考着各种可能的解决方案，一旦有了思路，便会立刻回到桌前，专注地投入到破译工作中。"""
+    }
+}
+
+# 模型配置
+MODEL_CONFIG = {
+    "qwen-plus": chat_model__qwen_plus,
+    "qwen-turbo": chat_model_qwen_turbo,
+    "zhipu": chat_model_zhipu,
+    "ollama": chat_model_ollama
+}
+
 class SimpleAgent:
-    def __init__(self, name: str, llm: ChatOpenAI,web_url:str = None):
+    def __init__(self, name: str, llm, system_prompt: str, web_url: str = None):
         self.name = name
         self.llm = llm
-        self.web_url=web_url
+        self.system_prompt = system_prompt
+        self.web_url = web_url
     def fetch_web_content(self):
         if not self.web_url:
             return ""
         try:
-            resp = requests.get(self.web_url,timeout=5)
-            resp.encoding=resp.apparent_encoding
-            # 只取正文，简单处理
+            resp = requests.get(self.web_url, timeout=5)
+            resp.encoding = resp.apparent_encoding
             from bs4 import BeautifulSoup
-            soup=BeautifulSoup(resp.text,"html.parser")
-            text=soup.get_text(separator="\n")
-            return text[:2000] #控制长度，防止prompt过长
+            soup = BeautifulSoup(resp.text, "html.parser")
+            text = soup.get_text(separator="\n")
+            return text[:2000]
         except Exception as e:
             return f"[网页抓取失败：{e}]"
-    async def run(self, message: str, history: List[dict]) -> str:
-        web_content=self.fetch_web_content() if self.web_url else ""
-        system_prompt=(
-            f"你是一个专业的日程管理助手，有清晰的日程规划和管理能力。并且也可以回答用户的任何问题。"
-            f"以下网页中的内容是你的身份角色性格:\n{web_content}\n"
-            f"请根据历史记录，专业严谨地回答用户的问题，并且要符合你的身份。"
-        )if web_content else(
-             "你是一个专业的日程管理助手有清晰的日程规划和管理的能力，对于用户的输入提出专业严谨的建议。请结合用户和你的历史对话内容，理解上下文并连贯地回答用户的问题。"
-        )
+    async def run(self, message: str, history: list) -> dict:
+        web_content = self.fetch_web_content() if self.web_url else ""
+        debug_info = {}
+        debug_info['web_content'] = web_content[:500]
+        if web_content and not web_content.startswith("[网页抓取失败"):
+            system_prompt = (
+                f"{self.system_prompt}\n以下网页中的内容是你的身份角色性格:\n{web_content}\n"
+                f"请根据历史记录，专业严谨地回答用户的问题，并且要符合你的身份。"
+            )
+        else:
+            system_prompt = self.system_prompt
+        debug_info['system_prompt'] = system_prompt[:1000]
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             MessagesPlaceholder(variable_name="history"),
             HumanMessagePromptTemplate.from_template("{input}")
         ])
         chain = prompt | self.llm
-        result = await chain.ainvoke({"input": message, "history": history})
-        return getattr(result, 'content', None) or str(result)
+        try:
+            result = await chain.ainvoke({"input": message, "history": history})
+            reply = getattr(result, 'content', None) or str(result)
+        except Exception as e:
+            reply = f"[AI回复失败：{e}]"
+        debug_info['model_reply'] = reply[:1000]
+        if not reply.strip():
+            reply = "很抱歉，AI暂时无法给出有效回复。请稍后再试，或尝试简化你的问题。"
+        return {
+            "reply": reply,
+            "debug": debug_info
+        }
 
 def classify_question(question: str) -> str:
     # 简单关键词分类，可根据实际需求扩展
@@ -187,36 +267,55 @@ def classify_question(question: str) -> str:
         return 'knowledge'
     return 'other'
 
-AGENT_MAP = {
-    'schedule': SimpleAgent("qwen-plus", chat_model__qwen_plus,web_url="https://prts.wiki/w/%E8%A7%81%E8%A1%8C%E8%80%85"),
-    'knowledge': SimpleAgent("zhipu", chat_model_zhipu,web_url="https://prts.wiki/w/%E8%A7%81%E8%A1%8C%E8%80%85"),
-    'other': SimpleAgent("ollama", chat_model_ollama,web_url="https://prts.wiki/w/%E8%A7%81%E8%A1%8C%E8%80%85")
-}
-
-@app.post("/ai/schedule_suggestion/")
-async def chat_with_ai(request: schemas.AIChatRequest, db: Session = Depends(get_db)):
+# 保留 /ai/chat/ 及相关逻辑
+@app.post("/ai/chat/")
+async def chat_with_ai(
+    request: schemas.AIChatRequest = Body(...),
+    model: str = Query("qwen-plus"),
+    role: str = Query("enforcer"),
+    db: Session = Depends(get_db)
+):
     try:
         user_id = request.user_id
-        # 读取历史
         history_msgs = []
         if user_id:
-            db_history = crud.get_ai_chat_history_by_user(db, user_id, limit=20)
-            history_msgs = [
-                {"role": h.role, "content": h.content} for h in reversed(db_history)
-            ]
-        history_msgs = history_msgs + (request.history or [])
-
-        # 自动分类
-        qtype = classify_question(request.message)
-        agent = AGENT_MAP.get(qtype, AGENT_MAP['other'])
-        reply = await agent.run(request.message, history_msgs)
-
-        # 存历史
+            db_history = crud.get_ai_chat_history_by_user(db, user_id, agent_role=role, limit=20)
+            history_msgs = []
+            for h in reversed(db_history):
+                # role字段只允许'user'或'assistant'
+                msg_role = h.role if h.role in ("user", "assistant") else ("user" if h.role == "human" else "assistant")
+                history_msgs.append({"role": msg_role, "content": h.content})
+        # 对前端传来的history也做role过滤
+        def normalize_role(role):
+            if role in ("user", "assistant"):
+                return role
+            elif role == "human":
+                return "user"
+            else:
+                return "assistant"
+        if request.history:
+            for msg in request.history:
+                msg_role = normalize_role(msg.get("role", "user"))
+                history_msgs.append({"role": msg_role, "content": msg.get("content", "")})
+        llm = MODEL_CONFIG.get(model, chat_model__qwen_plus)
+        role_conf = ROLE_CONFIG.get(role, ROLE_CONFIG["enforcer"])
+        agent = SimpleAgent(role_conf["name"], llm, role_conf["system_prompt"])
+        ai_result = await agent.run(request.message, history_msgs)
+        reply = ai_result["reply"]
+        debug = ai_result["debug"]
         if user_id:
-            crud.create_ai_chat_history(db, schemas.AIChatHistoryCreate(user_id=user_id, role="user", content=request.message))
-            crud.create_ai_chat_history(db, schemas.AIChatHistoryCreate(user_id=user_id, role="assistant", content=reply.strip()))
-
-        return {"reply": reply, "agent": agent.name, "type": qtype}
+            crud.create_ai_chat_history(db, schemas.AIChatHistoryCreate(user_id=user_id, role="user", content=request.message, agent_role=role))
+            crud.create_ai_chat_history(db, schemas.AIChatHistoryCreate(user_id=user_id, role="assistant", content=reply.strip(), agent_role=role))
+        result = {
+            "reply": reply,
+            "agent": agent.name,
+            "model": model,
+            "role": role,
+            "debug": debug
+        }
+        if getattr(request, "agent", None):
+            result["request_agent"] = request.agent
+        return result
     except Exception as e:
         logging.error(f"AI 请求失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"AI 请求失败: {str(e)}")

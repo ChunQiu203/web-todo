@@ -36,6 +36,7 @@ class AIChatHistoryBase(BaseModel):
     role: str
     content: str
     created_at: Optional[datetime.datetime] = None
+    agent_role: Optional[str] = 'schedule_assistant'  # 新增字段
 
 class AIChatHistoryCreate(AIChatHistoryBase):
     pass
@@ -48,5 +49,6 @@ class AIChatHistory(AIChatHistoryBase):
 class AIChatRequest(BaseModel):
     message: str
     user_id: Optional[int] = None
-    use_online: str
+    use_online: str = "false"
     history: Optional[list[dict]] = None
+    agent: Optional[str] = None

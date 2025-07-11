@@ -1,6 +1,22 @@
 <template>
     <div class="chat-container">
-        <!-- 新增：历史记录栏 -->
+        <!-- 新增：模型和角色选择 -->
+        <div class="select-bar">
+            <label>选择模型：</label>
+            <select v-model="selectedModel">
+                <option value="qwen-plus">qwen-plus</option>
+                <option value="qwen-turbo">qwen-turbo</option>
+                <option value="zhipu">zhipu</option>
+                <option value="ollama">ollama</option>
+            </select>
+            <label style="margin-left:16px;">选择角色：</label>
+            <select v-model="selectedRole">
+                <option value="schedule_assistant">日程助手</option>
+                <option value="wiki_expert">百科专家</option>
+                <option value="chat_friend">聊天伙伴</option>
+            </select>
+        </div>
+        <!-- 历史记录栏 -->
         <div class="history-bar">
             <div v-for="(message, index) in messages" :key="'history-' + index" :class="['history-item', message.type]">
                 <span v-if="message.type==='sent'">用户：</span>
@@ -31,6 +47,13 @@
             >
             <button @click="sendMessage">发送</button>
         </div>
+        <!-- 可选：debug信息 -->
+        <div v-if="debugInfo" style="margin:10px 0;">
+            <details>
+                <summary>调试信息</summary>
+                <pre>{{ debugInfo }}</pre>
+            </details>
+        </div>
     </div>
 </template>
 
@@ -41,7 +64,10 @@ export default{
         return{
             messages:[],
             newMessage:'',
-            user_id: 1 // 假设为1，实际应从登录信息获取
+            user_id: 1, // 假设为1，实际应从登录信息获取
+            selectedModel: 'qwen-plus',
+            selectedRole: 'schedule_assistant',
+            debugInfo: ''
         }
     },
     methods:{
@@ -56,37 +82,21 @@ export default{
                 const payload = {
                     message: this.newMessage,
                     user_id: this.user_id,
-                    use_online: false
+                    history: this.getHistoryForSend()
                 };
                 try {
-                    const response = await fetch('http://localhost:8000/ai/schedule_suggestion/', {
+                    const response = await fetch(`http://localhost:8000/ai/chat/?model=${this.selectedModel}&role=${this.selectedRole}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    // 流式读取AI回复
-                    let aiReply = '';
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder('utf-8');
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        aiReply += decoder.decode(value, { stream: true });
-                    }
-                    console.log('AI原始回复:', aiReply);
-                    if (aiReply.includes('AI建议获取失败')) {
-                        this.messages.push({
-                            text: aiReply,
-                            type: 'error',
-                            time: new Date().toLocaleTimeString()
-                        });
-                    } else {
-                        this.messages.push({
-                            text: aiReply,
-                            type: 'received',
-                            time: new Date().toLocaleTimeString()
-                        });
-                    }
+                    const data = await response.json();
+                    this.messages.push({
+                        text: data.reply,
+                        type: 'received',
+                        time: new Date().toLocaleTimeString()
+                    });
+                    this.debugInfo = JSON.stringify(data.debug, null, 2);
                 } catch (e) {
                     this.messages.push({
                         text: 'AI回复失败，请检查服务。',
@@ -97,6 +107,13 @@ export default{
                 this.newMessage='';
                 this.scrollToBottom();
             }
+        },
+        getHistoryForSend() {
+            // 只取最近10条对话，且只发role/content
+            return this.messages.slice(-10).map(m => ({
+                role: m.type === 'sent' ? 'user' : 'assistant',
+                content: m.text
+            }));
         },
         scrollToBottom(){
             this.$nextTick(()=>{
@@ -236,5 +253,22 @@ export default{
 }
 .history-item.received {
     color: #2e7d32;
+}
+.select-bar {
+    padding: 10px 16px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+}
+.select-bar label {
+    margin-right: 4px;
+}
+.select-bar select {
+    margin-right: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
 }
 </style>

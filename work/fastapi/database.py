@@ -3,7 +3,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import text
 
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://myuser:PASSword2005@localhost:3306/todolist"
+# SQLALCHEMY_DATABASE_URL = "mysql+pymysql://myuser:PASSword2005@localhost:3306/todolist"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://dbuser:summeruser@127.0.0.1:3306/summerdb"
+
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,

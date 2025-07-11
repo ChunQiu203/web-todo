@@ -29,4 +29,5 @@ class AIChatHistory(Base):
     role = Column(String(20))  # 'user' 或 'assistant'
     content = Column(Text)  # 支持超长内容
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    agent_role = Column(String(32), default='schedule_assistant')  # 新增字段，区分不同agent/角色
     user = relationship("User")
