@@ -70,12 +70,12 @@
         <div class="ai-helper">
           <div class="ai-header">
             <h4>🤖 AI 智能助手</h4>
-            <el-switch
-              v-model="useOnlineAI"
-              active-text="在线AI"
-              inactive-text="本地AI"
-              size="small"
-            />
+            <el-select v-model="useOnlineAI" size="small" style="width:120px;">
+              <el-option label="qwen-plus" value="qwen-plus" />
+              <el-option label="qwen-turbo" value="qwen-turbo" />
+              <el-option label="zhipu" value="zhipu" />
+              <el-option label="ollama" value="ollama" />
+            </el-select>
           </div>
           <el-input
             v-model="aiPrompt"
@@ -89,6 +89,7 @@
         </div>
       </div>
     </section>
+    <!-- 已移除 ChatInterface 相关内容 -->
 
     <!-- 添加任务弹窗 -->
     <el-dialog title="添加任务" v-model="dialogVisible" width="400px" :close-on-click-modal="false" center>
@@ -136,9 +137,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, registerRuntimeCompiler } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+// 已移除 ChatInterface 相关import
 
 const userId = 1
 const allTasks = ref([])      // 收件箱
@@ -153,8 +155,8 @@ const form = ref({
 })
 const aiPrompt = ref('')
 const aiSuggestion = ref('')
-const useOnlineAI = ref(false)
-const aiLoading = ref(false)
+const useOnlineAI = ref('qwen-plus') // 默认模型
+const aiLoading = ref(false) // 添加缺失的aiLoading变量
 const selectedTask = ref(null)
 const activeMenu = ref('inbox')
 const aiHistory = ref([])
@@ -284,26 +286,45 @@ const toggleComplete = async (task) => {
 }
 
 const getAISuggestion = async () => {
+  console.log('getAISuggestion 被调用', { aiPrompt: aiPrompt.value, useOnlineAI: useOnlineAI.value });
   if (!aiPrompt.value) {
     ElMessage.warning('请输入需求')
     return
   }
   aiLoading.value = true
   try {
-    // 先记录用户输入
     aiHistory.value.push({ role: 'user', content: aiPrompt.value })
-    const res = await axios.post('http://localhost:8000/ai/schedule_suggestion/', {
-      message: aiPrompt.value,
-      use_online: useOnlineAI.value
-    })
-    aiHistory.value.push({ role: 'ai', content: res.data.response.replace(/<think>|<\/think>/g, '').trim() })
-    ElMessage.success(`AI建议 (${res.data.source})`)
-    aiPrompt.value = ''
+    console.log('发送请求到后端...');
+    const response = await fetch('http://localhost:8000/ai/schedule_suggestion/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: aiPrompt.value,
+        user_id: userId,
+        use_online: useOnlineAI.value
+      })
+    });
+    
+    console.log('收到响应:', response.status);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('响应数据:', data);
+    if (data.reply) {
+      aiHistory.value.push({ role: data.agent || 'ai', content: `[${data.agent || 'AI'}|${data.type || ''}] ${data.reply}` });
+    } else {
+      aiHistory.value.push({ role: 'ai', content: 'AI未返回有效回复' });
+    }
+    ElMessage.success('AI建议已获取');
+    aiPrompt.value = '';
   } catch (error) {
-    aiHistory.value.push({ role: 'ai', content: 'AI建议获取失败，请检查网络连接或API配置' })
-    ElMessage.error('AI建议获取失败')
+    console.error('AI请求错误:', error);
+    aiHistory.value.push({ role: 'ai', content: 'AI建议获取失败，请检查网络连接或API配置' });
+    ElMessage.error('AI建议获取失败');
   } finally {
-    aiLoading.value = false
+    aiLoading.value = false;
   }
 }
 
@@ -457,6 +478,7 @@ function sortTasks(tasks) {
   flex-direction: column;
   align-items: stretch;
 }
+
 .detail-card {
   background: #fff;
   border-radius: 14px;
@@ -535,6 +557,8 @@ function sortTasks(tasks) {
   color: #409eff;
   font-size: 1.1rem;
 }
+
+/* 已移除 .chat-float 和 .ai-chat-section 样式 */
 
 @media (max-width: 900px) {
   .schedule-app {

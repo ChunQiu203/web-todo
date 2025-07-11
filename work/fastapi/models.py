@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
 from database import Base
 import datetime
@@ -21,3 +21,12 @@ class Schedule(Base):
     owner = relationship("User", back_populates="schedules")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     completed = Column(Boolean, default=False)
+
+class AIChatHistory(Base):
+    __tablename__ = "ai_chat_history"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    role = Column(String(20))  # 'user' 或 'assistant'
+    content = Column(Text)  # 支持超长内容
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    user = relationship("User")

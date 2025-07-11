@@ -1,14 +1,18 @@
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+import time
 
 app=FastAPI()
 
 @app.get("/data/")
 async def get_data():
-    return {"name":'test','age':20}
+    def event_stream():
+        for i in range(5):
+            yield f"data chunk {i+1}\n"
+            time.sleep(1)
+    return StreamingResponse(event_stream(), media_type="text/plain")
 
 from starlette.middleware.cors import CORSMiddleware
-
-app = FastAPI()
 
 app.add_middleware(     
     CORSMiddleware,

@@ -1,13 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 import datetime
+
 
 class ScheduleBase(BaseModel):
     title: str
     description: Optional[str] = None
     start_time: datetime.datetime
     end_time: datetime.datetime
-    completed: Optional[bool] = False
 
 class ScheduleCreate(ScheduleBase):
     pass
@@ -17,8 +17,6 @@ class Schedule(ScheduleBase):
     owner_id: int
     created_at: datetime.datetime
 
-    class Config:
-        orm_mode = True
 
 class UserBase(BaseModel):
     username: str
@@ -32,3 +30,23 @@ class User(UserBase):
 
     class Config:
         orm_mode = True
+
+class AIChatHistoryBase(BaseModel):
+    user_id: int
+    role: str
+    content: str
+    created_at: Optional[datetime.datetime] = None
+
+class AIChatHistoryCreate(AIChatHistoryBase):
+    pass
+
+class AIChatHistory(AIChatHistoryBase):
+    id: int
+    class Config:
+        orm_mode = True
+
+class AIChatRequest(BaseModel):
+    message: str
+    user_id: Optional[int] = None
+    use_online: str
+    history: Optional[list[dict]] = None
