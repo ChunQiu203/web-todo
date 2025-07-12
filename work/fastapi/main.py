@@ -4,13 +4,24 @@ from sqlalchemy.orm import Session
 import crud, models, schemas
 from database import SessionLocal, engine
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
-from pytz import timezone
+from datetime import datetime, timedelta, timezone
+from pytz import timezone as pytz_timezone
 from sqlalchemy import func
 import json
 from typing import Optional, List
 from dotenv import load_dotenv
 load_dotenv()
+
+# 定义北京时间时区
+beijing_tz = timezone(timedelta(hours=8))
+
+def beijing_now():
+    """返回北京时间"""
+    return datetime.now(beijing_tz)
+
+def beijing_today():
+    """返回北京时间的今天日期"""
+    return beijing_now().date()
 
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI()
@@ -71,7 +82,7 @@ def update_schedule_completed(schedule_id: int, completed: bool = Body(...), db:
 
 @app.get("/users/{user_id}/schedules/today/", response_model=list[schemas.Schedule])
 def get_today_schedules(user_id: int, db: Session = Depends(get_db)):
-    today = datetime.now().date()
+    today = beijing_today()
     tomorrow = today + timedelta(days=1)
     return db.query(models.Schedule).filter(
         models.Schedule.owner_id == user_id,
@@ -81,7 +92,7 @@ def get_today_schedules(user_id: int, db: Session = Depends(get_db)):
 
 @app.get("/users/{user_id}/schedules/week/", response_model=list[schemas.Schedule])
 def get_week_schedules(user_id: int, db: Session = Depends(get_db)):
-    today = datetime.now().date()
+    today = beijing_today()
     week = today + timedelta(days=7)
     return db.query(models.Schedule).filter(
         models.Schedule.owner_id == user_id,
@@ -134,9 +145,9 @@ chat_model_ollama = ChatOllama(
 
 
 @app.get("/ai/history/{user_id}", response_model=List[schemas.AIChatHistory])
-def get_ai_history(user_id: int, limit: int = Query(20, le=100), db: Session = Depends(get_db)):
-    """获取用户AI历史对话，按时间倒序"""
-    return crud.get_ai_chat_history_by_user(db, user_id, limit)
+def get_ai_history(user_id: int, limit: int = Query(20, le=100), role: str = Query(None), db: Session = Depends(get_db)):
+    """获取用户AI历史对话，按时间倒序，支持按角色过滤"""
+    return crud.get_ai_chat_history_by_user(db, user_id, agent_role=role, limit=limit)
 
 import requests
 # 定义 AI 响应接口

@@ -1,13 +1,36 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from typing import Optional, List
 import datetime
+from datetime import timezone, timedelta
 
+# 定义北京时间时区
+beijing_tz = timezone(timedelta(hours=8))
 
 class ScheduleBase(BaseModel):
     title: str
     description: Optional[str] = None
     start_time: datetime.datetime
     end_time: datetime.datetime
+    
+    @validator('start_time', 'end_time', pre=True)
+    def ensure_timezone(cls, v):
+        """确保时间字段有时区信息，如果没有则添加北京时间"""
+        if isinstance(v, datetime.datetime):
+            print(f"验证时间字段: {v}, 时区信息: {v.tzinfo}")
+            if v.tzinfo is None:
+                # 如果没有时区信息，假设是北京时间
+                result = v.replace(tzinfo=beijing_tz)
+                print(f"添加时区信息后: {result}")
+                return result
+            elif v.tzinfo != beijing_tz:
+                # 如果是其他时区，转换为北京时间
+                result = v.astimezone(beijing_tz)
+                print(f"转换时区后: {result}")
+                return result
+            else:
+                print(f"时间已经是北京时间: {v}")
+                return v
+        return v
 
 class ScheduleCreate(ScheduleBase):
     pass

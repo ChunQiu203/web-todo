@@ -62,9 +62,25 @@
       </div>
       <div class="ai-assistant-area">
         <div class="ai-simple-list">
-          <div v-for="(item, idx) in aiHistory" :key="idx" class="ai-simple-item">
-            <div v-if="item.role === 'user'">用户：{{ item.content }}</div>
-            <div v-else>{{ ROLE_NAME_MAP[selectedRole] || 'AI' }}：{{ item.content }}</div>
+          <div v-for="(item, idx) in aiHistory" :key="idx" class="ai-simple-item" :class="item.role === 'user' ? 'user-message' : 'ai-message'">
+            <template v-if="item.role === 'user'">
+              <div class="msg-bubble-group user-bubble-group">
+                <div class="msg-bubble user-bubble">{{ item.content }}</div>
+                <div class="msg-avatar-group">
+                  <img class="msg-avatar" :src="getMessageAvatar(item)" alt="user" />
+                  <div class="msg-nick">{{ getMessageNickname(item) }}</div>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="msg-bubble-group ai-bubble-group">
+                <div class="msg-avatar-group">
+                  <img class="msg-avatar" :src="getMessageAvatar(item)" alt="ai" />
+                  <div class="msg-nick">{{ getMessageNickname(item) }}</div>
+                </div>
+                <div class="msg-bubble ai-bubble">{{ item.content }}</div>
+              </div>
+            </template>
           </div>
         </div>
         <div class="ai-helper">
@@ -252,15 +268,25 @@ const addSchedule = async () => {
     return
   }
   try {
-    await axios.post(`http://localhost:8000/users/${userId}/schedules/`, form.value)
+    // 处理时间格式，确保发送正确的时间格式
+    const scheduleData = {
+      title: form.value.title,
+      description: form.value.description,
+      start_time: form.value.start_time,
+      end_time: form.value.end_time
+    }
+    
+    console.log('发送的日程数据:', scheduleData)
+    await axios.post(`http://localhost:8000/users/${userId}/schedules/`, scheduleData)
     ElMessage.success('添加成功')
     dialogVisible.value = false
     form.value = { title: '', description: '', start_time: '', end_time: '' }
     await fetchAllTasks()
     await fetchTodayTasks()
     await fetchWeekTasks()
-  } catch {
-    ElMessage.error('添加失败')
+  } catch (error) {
+    console.error('添加失败:', error)
+    ElMessage.error('添加失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
@@ -296,9 +322,17 @@ const toggleComplete = async (task) => {
 
 // 1. 新增角色名映射
 const ROLE_NAME_MAP = {
-  'enforcer': 'enforcer',
-  'mizuki': 'mizuki',
-  'logos': 'logos'
+  'enforcer': '见行者',
+  'mizuki': '水月',
+  'logos': '逻各斯'
+}
+
+// 2. 新增角色头像映射
+const ROLE_AVATAR_MAP = {
+  'enforcer': '/立绘_见行者_2.png',
+  'mizuki': '/立绘_水月_2.png',
+  'logos': '/立绘_逻各斯_skin1.png',
+  'ai': '/立绘_逻各斯_skin1.png' // 兜底AI头像
 }
 
 // 2. 获取历史记录时带上角色参数
@@ -306,11 +340,12 @@ async function loadAIHistory() {
   try {
     const response = await fetch(`http://localhost:8000/ai/history/${userId}?role=${selectedRole.value}`);
     const history = await response.json();
-    aiHistory.value = history.map(h => ({
-      content: h.content,
-      role: h.role,
-      time: h.created_at ? new Date(h.created_at).toLocaleTimeString() : ''
-    }));
+    aiHistory.value = history
+      .map(h => ({
+        content: h.content,
+        role: h.role,
+        time: h.created_at ? new Date(h.created_at).toLocaleTimeString() : ''
+      })); // 不再 reverse，顺序与 push 一致
   } catch (e) {
     aiHistory.value = [];
   }
@@ -348,7 +383,11 @@ const getAISuggestion = async () => {
     const data = await response.json();
     console.log('响应数据:', data);
     if (data.reply) {
-      aiHistory.value.push({ role: data.agent || 'ai', content: `[${data.agent || 'AI'}|${data.type || ''}] ${data.reply}` });
+      // 始终加上当前选中角色的前缀
+      aiHistory.value.push({ 
+        role: 'ai', 
+        content: `[${selectedRole.value}] ${data.reply}` 
+      });
     } else {
       aiHistory.value.push({ role: 'ai', content: 'AI未返回有效回复' });
     }
@@ -384,6 +423,55 @@ function formatDate(dt) {
 function sortTasks(tasks) {
   // 未完成的在前，已完成的在后
   return [...tasks].sort((a, b) => Number(a.completed) - Number(b.completed));
+}
+
+// 解析消息中的角色信息
+function parseMessageRole(content) {
+  // 支持 [角色|类型] 或 [角色] 两种格式
+  let match = content.match(/^\[([^|\]]+)\|([^\]]*)\]\s*(.*)$/);
+  if (match) {
+    return {
+      role: match[1].toLowerCase(),
+      type: match[2],
+      content: match[3]
+    };
+  }
+  match = content.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (match) {
+    return {
+      role: match[1].toLowerCase(),
+      type: '',
+      content: match[2]
+    };
+  }
+  return {
+    role: 'ai',
+    type: '',
+    content: content
+  };
+}
+
+// 获取消息对应的头像
+function getMessageAvatar(item) {
+  if (item.role === 'user') {
+    return '/立绘_阿米娅(医疗)_skin1.png';
+  }
+  // AI消息头像始终取决于当前选中的 agent
+  const roleKey = selectedRole.value ? selectedRole.value.trim().toLowerCase() : 'ai';
+  const avatar = ROLE_AVATAR_MAP[roleKey];
+  console.log('AI头像role:', roleKey, '图片路径:', avatar, '原始内容:', item.content);
+  return avatar ? avatar : '/立绘_逻各斯_skin1.png';
+}
+
+// 获取消息对应的昵称
+function getMessageNickname(item) {
+  if (item.role === 'user') {
+    return '我';
+  }
+  
+  // 解析AI消息中的角色信息
+  const parsed = parseMessageRole(item.content);
+  return ROLE_NAME_MAP[parsed.role] || 'AI';
 }
 
 </script>
@@ -565,9 +653,80 @@ function sortTasks(tasks) {
   padding: 8px 12px;
 }
 .ai-simple-item {
-  padding: 4px 0;
-  color: #333;
+  display: flex;
+  margin: 12px 0;
+}
+/* 用户消息整体靠右 */
+.user-message {
+  justify-content: flex-end;
+  display: flex;
+}
+.user-bubble-group {
+  display: flex;
+  flex-direction: row; /* 头像在左，气泡在右 */
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+.user-bubble {
+  background: #7be16c;
+  color: #222;
+  border-radius: 16px 4px 16px 16px;
+  margin-left: 12px;
+  text-align: right;
+  align-self: flex-end;
+}
+.msg-avatar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 0;
+  margin-right: 0;
+}
+.msg-bubble-group {
+  display: flex;
+  align-items: flex-end;
+}
+.ai-bubble-group {
+  flex-direction: row;
+}
+.msg-bubble {
+  max-width: 320px;
+  padding: 10px 18px;
+  border-radius: 16px;
   font-size: 1rem;
+  word-break: break-all;
+  display: inline-block;
+}
+.user-bubble {
+  background: #7be16c;
+  color: #222;
+  border-radius: 16px 4px 16px 16px;
+  margin-left: 12px;
+}
+.ai-bubble {
+  background: #fff;
+  color: #333;
+  border-radius: 4px 16px 16px 16px;
+  margin-right: 12px;
+  border: 1px solid #eee;
+}
+.msg-avatar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.msg-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eee;
+  margin-bottom: 2px;
+}
+.msg-nick {
+  font-size: 0.85rem;
+  color: #888;
+  margin-top: 2px;
 }
 .ai-helper {
   margin-top: auto;
