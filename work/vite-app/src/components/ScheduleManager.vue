@@ -190,6 +190,17 @@ const selectedRole = ref('schedule_assistant')
 const fetchAllTasks = async () => {
   const res = await axios.get(`http://localhost:8000/users/${userId}/schedules/`)
   allTasks.value = res.data.map(item => ({ ...item, completed: false }))
+  // 如果没有任务，添加一条默认任务
+  if (allTasks.value.length === 0) {
+    allTasks.value.push({
+      id: 'default-tip',
+      title: '如果想让ai帮你添加任务，说：安排任务：...',
+      description: '你可以在AI助手输入框直接说“安排任务：开会”',
+      start_time: '',
+      end_time: '',
+      completed: false
+    })
+  }
 }
 // 加载今天任务
 const fetchTodayTasks = async () => {
@@ -356,6 +367,38 @@ watch(selectedRole, loadAIHistory)
 
 // 4. 发送消息时，history参数只包含当前角色的历史
 const getAISuggestion = async () => {
+  // 智能识别“安排任务”并自动添加
+  if (/安排任务|添加任务|新建任务|待办/.test(aiPrompt.value)) {
+    const { time, desc } = extractTaskInfo(aiPrompt.value);
+    await addScheduleDirect(desc, time);
+    // 保存用户输入到历史
+    await fetch('http://localhost:8000/ai/history/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        role: 'user',
+        content: aiPrompt.value,
+        agent_role: selectedRole.value
+      })
+    });
+    // 保存AI自动回复到历史
+    await fetch('http://localhost:8000/ai/history/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        role: 'assistant',
+        content: `[${selectedRole.value}] 已为你添加任务：“${desc}”，时间：${time}`,
+        agent_role: selectedRole.value
+      })
+    });
+    ElMessage.success('已为你自动添加任务');
+    aiHistory.value.push({ role: 'ai', content: `[${selectedRole.value}] 已为你添加任务：“${desc}”，时间：${time}` });
+    aiPrompt.value = '';
+    aiLoading.value = false;
+    return;
+  }
   console.log('getAISuggestion 被调用', { aiPrompt: aiPrompt.value, useOnlineAI: useOnlineAI.value });
   if (!aiPrompt.value) {
     ElMessage.warning('请输入需求')
@@ -402,6 +445,33 @@ const getAISuggestion = async () => {
   }
 }
 
+function extractTaskInfo(input) {
+  let time = '';
+  const now = new Date();
+  time = now.toISOString().slice(0, 10) + ' 09:00:00';
+
+  // 只去掉“安排任务：”前缀
+  let desc = input.replace(/^安排任务[:：]/, '').trim();
+
+  if (!desc) desc = '新任务';
+  if (desc.length > 20) desc = desc.substring(0, 20) + '...';
+
+  return { time, desc };
+}
+
+async function addScheduleDirect(title, startTime) {
+  const scheduleData = {
+    title: title,
+    description: title,
+    start_time: startTime,
+    end_time: startTime
+  };
+  await axios.post(`http://localhost:8000/users/${userId}/schedules/`, scheduleData);
+  await fetchAllTasks();
+  await fetchTodayTasks();
+  await fetchWeekTasks();
+}
+
 const menuTitle = computed(() => {
   if (activeMenu.value === 'today') return '今天'
   if (activeMenu.value === 'week') return '未来7天'
@@ -425,31 +495,7 @@ function sortTasks(tasks) {
   return [...tasks].sort((a, b) => Number(a.completed) - Number(b.completed));
 }
 
-// 解析消息中的角色信息
-function parseMessageRole(content) {
-  // 支持 [角色|类型] 或 [角色] 两种格式
-  let match = content.match(/^\[([^|\]]+)\|([^\]]*)\]\s*(.*)$/);
-  if (match) {
-    return {
-      role: match[1].toLowerCase(),
-      type: match[2],
-      content: match[3]
-    };
-  }
-  match = content.match(/^\[([^\]]+)\]\s*(.*)$/);
-  if (match) {
-    return {
-      role: match[1].toLowerCase(),
-      type: '',
-      content: match[2]
-    };
-  }
-  return {
-    role: 'ai',
-    type: '',
-    content: content
-  };
-}
+
 
 // 获取消息对应的头像
 function getMessageAvatar(item) {
@@ -458,9 +504,7 @@ function getMessageAvatar(item) {
   }
   // AI消息头像始终取决于当前选中的 agent
   const roleKey = selectedRole.value ? selectedRole.value.trim().toLowerCase() : 'ai';
-  const avatar = ROLE_AVATAR_MAP[roleKey];
-  console.log('AI头像role:', roleKey, '图片路径:', avatar, '原始内容:', item.content);
-  return avatar ? avatar : '/立绘_逻各斯_skin1.png';
+  return ROLE_AVATAR_MAP[roleKey] || '/立绘_逻各斯_skin1.png';
 }
 
 // 获取消息对应的昵称
@@ -468,10 +512,8 @@ function getMessageNickname(item) {
   if (item.role === 'user') {
     return '我';
   }
-  
-  // 解析AI消息中的角色信息
-  const parsed = parseMessageRole(item.content);
-  return ROLE_NAME_MAP[parsed.role] || 'AI';
+  // AI消息始终显示当前选中 agent 的中文名
+  return ROLE_NAME_MAP[selectedRole.value] || 'AI';
 }
 
 </script>

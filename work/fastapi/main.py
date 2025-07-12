@@ -149,6 +149,10 @@ def get_ai_history(user_id: int, limit: int = Query(20, le=100), role: str = Que
     """获取用户AI历史对话，按时间倒序，支持按角色过滤"""
     return crud.get_ai_chat_history_by_user(db, user_id, agent_role=role, limit=limit)
 
+@app.post("/ai/history/")
+def create_ai_history(history: schemas.AIChatHistoryCreate, db: Session = Depends(get_db)):
+    return crud.create_ai_chat_history(db, history)
+
 import requests
 # 定义 AI 响应接口
 # 角色配置
